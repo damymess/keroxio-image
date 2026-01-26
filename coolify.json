@@ -1,0 +1,6 @@
+{
+    "subdomain":  "image.keroxio.fr",
+    "healthcheck":  "/health",
+    "port":  8000,
+    "name":  "keroxio-image"
+}
