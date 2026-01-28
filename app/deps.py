@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.config import settings
 from app.services.storage import StorageService
-from app.services.nano_banana import NanoBananaService
+from app.services.rembg_service import RembgService
 
 security = HTTPBearer()
 
@@ -47,6 +47,17 @@ def get_storage_service() -> StorageService:
     return StorageService()
 
 
-def get_nano_banana_service() -> NanoBananaService:
-    """Get Nano Banana service instance."""
-    return NanoBananaService()
+# Singleton instance for rembg (model loaded once)
+_rembg_service: RembgService = None
+
+def get_image_processing_service() -> RembgService:
+    """Get image processing service instance (rembg - free, self-hosted)."""
+    global _rembg_service
+    if _rembg_service is None:
+        _rembg_service = RembgService()
+    return _rembg_service
+
+# Alias for backward compatibility
+def get_nano_banana_service() -> RembgService:
+    """Deprecated: Use get_image_processing_service instead."""
+    return get_image_processing_service()

@@ -8,8 +8,8 @@ from app.schemas import (
     BackgroundRemovalRequest,
     EnhancementRequest,
 )
-from app.services.nano_banana import NanoBananaService
-from app.deps import get_current_user, get_nano_banana_service
+from app.services.rembg_service import RembgService
+from app.deps import get_current_user, get_image_processing_service
 
 router = APIRouter()
 
@@ -19,25 +19,25 @@ async def enhance_image(
     request: EnhancementRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    nano_banana: NanoBananaService = Depends(get_nano_banana_service),
+    image_service: RembgService = Depends(get_image_processing_service),
 ):
     """
-    Enhance image quality using AI.
+    Enhance image quality using PIL (free, self-hosted).
 
     Features:
     - Auto color correction
     - Noise reduction
     - Sharpening
-    - HDR enhancement
+    - Contrast boost
     """
     try:
-        result = await nano_banana.enhance_image(
+        result = await image_service.enhance_image(
             image_url=request.image_url,
             options={
                 "auto_color": request.auto_color,
                 "denoise": request.denoise,
                 "sharpen": request.sharpen,
-                "hdr": request.hdr,
+                "contrast": getattr(request, "contrast", True),
             },
         )
 
@@ -59,10 +59,10 @@ async def enhance_image(
 async def remove_background(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    nano_banana: NanoBananaService = Depends(get_nano_banana_service),
+    image_service: RembgService = Depends(get_image_processing_service),
 ):
     """
-    Remove image background and optionally replace it.
+    Remove image background using rembg (free, self-hosted).
 
     Options:
     - Transparent background
@@ -71,7 +71,7 @@ async def remove_background(
     - Showroom background (virtual car showroom)
     """
     try:
-        result = await nano_banana.remove_background(
+        result = await image_service.remove_background(
             image_url=request.image_url,
             background_type=request.background_type,
             background_color=request.background_color,
@@ -97,7 +97,7 @@ async def batch_process(
     request: ProcessRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    nano_banana: NanoBananaService = Depends(get_nano_banana_service),
+    image_service: RembgService = Depends(get_image_processing_service),
 ):
     """
     Process multiple images in batch.
@@ -110,7 +110,7 @@ async def batch_process(
 
     # Add to background tasks
     background_tasks.add_task(
-        nano_banana.batch_process,
+        image_service.batch_process,
         job_id=job_id,
         image_urls=request.image_urls,
         operations=request.operations,
@@ -148,7 +148,7 @@ async def get_process_status(
 async def virtual_showroom(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    nano_banana: NanoBananaService = Depends(get_nano_banana_service),
+    image_service: RembgService = Depends(get_image_processing_service),
 ):
     """
     Place vehicle in a virtual showroom environment.
@@ -160,7 +160,7 @@ async def virtual_showroom(
     - custom: Custom background
     """
     try:
-        result = await nano_banana.virtual_showroom(
+        result = await image_service.virtual_showroom(
             image_url=request.image_url,
             showroom_type=request.background_type or "indoor",
         )
