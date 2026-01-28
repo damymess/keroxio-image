@@ -8,8 +8,8 @@ from app.schemas import (
     BackgroundRemovalRequest,
     EnhancementRequest,
 )
-from app.services.rembg_service import RembgService
-from app.deps import get_current_user, get_image_processing_service
+from app.services.birefnet_service import BiRefNetService, get_birefnet_service
+from app.deps import get_current_user
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ async def enhance_image(
     request: EnhancementRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    image_service: RembgService = Depends(get_image_processing_service),
+    image_service: BiRefNetService = Depends(get_birefnet_service),
 ):
     """
     Enhance image quality using PIL (free, self-hosted).
@@ -59,10 +59,10 @@ async def enhance_image(
 async def remove_background(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    image_service: RembgService = Depends(get_image_processing_service),
+    image_service: BiRefNetService = Depends(get_birefnet_service),
 ):
     """
-    Remove image background using rembg (free, self-hosted).
+    Remove image background using BiRefNet (state-of-the-art, free).
 
     Options:
     - Transparent background
@@ -97,7 +97,7 @@ async def batch_process(
     request: ProcessRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    image_service: RembgService = Depends(get_image_processing_service),
+    image_service: BiRefNetService = Depends(get_birefnet_service),
 ):
     """
     Process multiple images in batch.
@@ -148,7 +148,7 @@ async def get_process_status(
 async def virtual_showroom(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    image_service: RembgService = Depends(get_image_processing_service),
+    image_service: BiRefNetService = Depends(get_birefnet_service),
 ):
     """
     Place vehicle in a virtual showroom environment.
