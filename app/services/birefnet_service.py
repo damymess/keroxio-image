@@ -1,35 +1,31 @@
 """
-BiRefNet-based image processing service.
-State-of-the-art background removal (2024).
-Free, open-source, excellent for vehicles.
+Image processing service using rembg.
+Lightweight, excellent for vehicles.
+Mode éco: pas de torch/transformers, juste ONNX.
 """
 import io
 import uuid
 import asyncio
 from typing import Optional, List, Dict, Any
 from pathlib import Path
-from functools import lru_cache
 
 import httpx
 from PIL import Image, ImageEnhance, ImageFilter
-import torch
 import numpy as np
+from rembg import remove, new_session
 
 from app.config import settings
 
 
 class BiRefNetService:
     """
-    High-quality image processing using BiRefNet.
+    Image processing service using rembg (U2-Net).
     
-    BiRefNet provides state-of-the-art background removal,
-    especially excellent for vehicles and complex objects.
+    Lightweight alternative to BiRefNet, excellent for vehicles.
+    Uses ONNX runtime - no GPU required.
     """
 
     def __init__(self):
-        self.model = None
-        self.processor = None
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         self._backgrounds = {
             "white": "#FFFFFF",
             "gray": "#808080",
@@ -39,32 +35,13 @@ class BiRefNetService:
         self._load_model()
 
     def _load_model(self):
-        """Load BiRefNet model from Hugging Face."""
+        """Load rembg model."""
         try:
-            from transformers import AutoModelForImageSegmentation, AutoProcessor
-            
-            # BiRefNet model from Hugging Face
-            model_id = "ZhengPeng7/BiRefNet"
-            
-            self.processor = AutoProcessor.from_pretrained(
-                model_id,
-                trust_remote_code=True
-            )
-            self.model = AutoModelForImageSegmentation.from_pretrained(
-                model_id,
-                trust_remote_code=True
-            )
-            self.model.to(self.device)
-            self.model.eval()
-            
-            print(f"✅ BiRefNet loaded on {self.device}")
-            
-        except ImportError:
-            # Fallback to rembg if BiRefNet deps not available
-            print("⚠️ BiRefNet not available, falling back to rembg")
-            from rembg import remove, new_session
-            self.fallback_session = new_session("u2net")
-            self.model = None
+            self.session = new_session("u2net")
+            print("✅ rembg (U2-Net) loaded successfully")
+        except Exception as e:
+            print(f"❌ Failed to load rembg: {e}")
+            self.session = None
 
     async def _download_image(self, image_url: str) -> bytes:
         """Download image from URL."""
@@ -88,39 +65,12 @@ class BiRefNetService:
         hex_color = hex_color.lstrip("#")
         return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
 
-    def _birefnet_remove_bg(self, image: Image.Image) -> Image.Image:
-        """Remove background using BiRefNet."""
-        if self.model is None:
-            # Fallback to rembg
-            from rembg import remove
-            img_bytes = io.BytesIO()
-            image.save(img_bytes, format="PNG")
-            result = remove(img_bytes.getvalue(), session=self.fallback_session)
-            return Image.open(io.BytesIO(result)).convert("RGBA")
-        
-        # Prepare input for BiRefNet
-        original_size = image.size
-        
-        # Process with BiRefNet
-        inputs = self.processor(images=image, return_tensors="pt")
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-        
-        with torch.no_grad():
-            outputs = self.model(**inputs)
-        
-        # Get the mask
-        mask = outputs.logits.squeeze().cpu().numpy()
-        
-        # Normalize and resize mask to original size
-        mask = (mask - mask.min()) / (mask.max() - mask.min())
-        mask = (mask * 255).astype(np.uint8)
-        mask = Image.fromarray(mask).resize(original_size, Image.Resampling.LANCZOS)
-        
-        # Apply mask to create RGBA image
-        image_rgba = image.convert("RGBA")
-        image_rgba.putalpha(mask)
-        
-        return image_rgba
+    def _remove_bg(self, image: Image.Image) -> Image.Image:
+        """Remove background using rembg."""
+        img_bytes = io.BytesIO()
+        image.save(img_bytes, format="PNG")
+        result = remove(img_bytes.getvalue(), session=self.session)
+        return Image.open(io.BytesIO(result)).convert("RGBA")
 
     async def remove_background(
         self,
@@ -130,7 +80,7 @@ class BiRefNetService:
         background_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Remove image background using BiRefNet (state-of-the-art).
+        Remove image background using rembg (U2-Net).
         
         Types:
         - transparent: PNG with alpha
@@ -144,10 +94,8 @@ class BiRefNetService:
         image_bytes = await self._download_image(image_url)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Remove background using BiRefNet
-        result_image = await asyncio.to_thread(
-            self._birefnet_remove_bg, image
-        )
+        # Remove background using rembg
+        result_image = await asyncio.to_thread(self._remove_bg, image)
         
         # Apply background based on type
         if background_type == "solid" and background_color:
@@ -190,7 +138,7 @@ class BiRefNetService:
             "id": str(uuid.uuid4()),
             "url": processed_url,
             "processing_time": round(processing_time, 2),
-            "model": "BiRefNet" if self.model else "rembg-fallback",
+            "model": "rembg-u2net",
             "status": "completed",
         }
 
@@ -311,7 +259,7 @@ class BiRefNetService:
 _service_instance = None
 
 def get_birefnet_service() -> BiRefNetService:
-    """Get or create BiRefNet service singleton."""
+    """Get or create service singleton."""
     global _service_instance
     if _service_instance is None:
         _service_instance = BiRefNetService()
