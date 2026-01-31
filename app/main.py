@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 
 from app.config import settings
@@ -10,6 +13,13 @@ from app.routers import images, process
 async def lifespan(app: FastAPI):
     # Startup
     print(f"Starting {settings.SERVICE_NAME}...")
+    
+    # Ensure storage directories exist
+    storage_path = Path(settings.STORAGE_PATH)
+    (storage_path / "processed").mkdir(parents=True, exist_ok=True)
+    (storage_path / "uploads").mkdir(parents=True, exist_ok=True)
+    print(f"📁 Storage path: {storage_path}")
+    
     yield
     # Shutdown
     print(f"Shutting down {settings.SERVICE_NAME}...")
@@ -34,6 +44,11 @@ app.add_middleware(
 # Routers
 app.include_router(images.router, prefix="/images", tags=["Images"])
 app.include_router(process.router, prefix="/process", tags=["Processing"])
+
+# Static files for processed images (local storage)
+storage_path = Path(settings.STORAGE_PATH)
+if storage_path.exists():
+    app.mount("/storage", StaticFiles(directory=str(storage_path)), name="storage")
 
 
 @app.get("/")

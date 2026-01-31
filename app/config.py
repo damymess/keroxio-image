@@ -15,7 +15,11 @@ class Settings(BaseSettings):
     NANO_BANANA_API_KEY: str = ""
     NANO_BANANA_API_URL: str = "https://api.nanobanana.ai/v1"
 
-    # Cloudflare R2
+    # Local Storage (default - works without external services)
+    STORAGE_PATH: str = "/app/storage"
+    STORAGE_URL: str = "/storage"  # Served by FastAPI static files mount
+    
+    # Cloudflare R2 (optional - for production)
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY: str = ""
     R2_SECRET_KEY: str = ""
