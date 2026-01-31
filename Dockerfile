@@ -48,9 +48,6 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 # Copy application code
 COPY --chown=appuser:appgroup app/ ./app/
 
-# Pre-download rembg model during build (avoids timeout at runtime)
-RUN python -c "from rembg import new_session; new_session('u2net')" || true
-
 # Create storage directory with correct permissions
 RUN mkdir -p /app/storage/processed /app/storage/uploads \
     && chown -R appuser:appgroup /app/storage

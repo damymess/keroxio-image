@@ -1,28 +1,23 @@
 """
-Image processing service using rembg.
-Lightweight, excellent for vehicles.
-Mode éco: pas de torch/transformers, juste ONNX.
+Fallback image processing service (when AutoBG.ai is not configured).
+Uses basic PIL operations only.
 """
 import io
 import uuid
-import asyncio
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
 import httpx
 from PIL import Image, ImageEnhance, ImageFilter
-import numpy as np
-from rembg import remove, new_session
 
 from app.config import settings
 
 
 class BiRefNetService:
     """
-    Image processing service using rembg (U2-Net).
+    Fallback image processing service using PIL only.
     
-    Lightweight alternative to BiRefNet, excellent for vehicles.
-    Uses ONNX runtime - no GPU required.
+    For full background removal, configure AUTOBG_API_KEY.
     """
 
     def __init__(self):
@@ -32,16 +27,7 @@ class BiRefNetService:
             "dark": "#1f2937",
             "showroom": "#2d3748",
         }
-        self._load_model()
-
-    def _load_model(self):
-        """Load rembg model."""
-        try:
-            self.session = new_session("u2net")
-            print("✅ rembg (U2-Net) loaded successfully")
-        except Exception as e:
-            print(f"❌ Failed to load rembg: {e}")
-            self.session = None
+        print("⚠️ Using fallback PIL service. Configure AUTOBG_API_KEY for background removal.")
 
     async def _download_image(self, image_url: str) -> bytes:
         """Download image from URL."""
@@ -60,18 +46,6 @@ class BiRefNetService:
         
         return f"{settings.STORAGE_URL}/processed/{filename}"
 
-    def _hex_to_rgb(self, hex_color: str) -> tuple:
-        """Convert hex color to RGB tuple."""
-        hex_color = hex_color.lstrip("#")
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
-    def _remove_bg(self, image: Image.Image) -> Image.Image:
-        """Remove background using rembg."""
-        img_bytes = io.BytesIO()
-        image.save(img_bytes, format="PNG")
-        result = remove(img_bytes.getvalue(), session=self.session)
-        return Image.open(io.BytesIO(result)).convert("RGBA")
-
     async def remove_background(
         self,
         image_url: str,
@@ -80,56 +54,25 @@ class BiRefNetService:
         background_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Remove image background using rembg (U2-Net).
-        
-        Types:
-        - transparent: PNG with alpha
-        - solid: Solid color background
-        - custom: Custom background image
+        Fallback: returns original image with a warning.
+        Configure AUTOBG_API_KEY for real background removal.
         """
         import time
         start = time.time()
         
-        # Download source image
+        # Just return the original image with enhancement
         image_bytes = await self._download_image(image_url)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Remove background using rembg
-        result_image = await asyncio.to_thread(self._remove_bg, image)
+        # Apply basic enhancement
+        enhancer = ImageEnhance.Contrast(image)
+        image = enhancer.enhance(1.1)
         
-        # Apply background based on type
-        if background_type == "solid" and background_color:
-            bg_color = self._hex_to_rgb(background_color)
-            background = Image.new("RGBA", result_image.size, bg_color + (255,))
-            background.paste(result_image, mask=result_image.split()[3])
-            result_image = background.convert("RGB")
-            
-        elif background_type == "custom" and background_url:
-            bg_bytes = await self._download_image(background_url)
-            background = Image.open(io.BytesIO(bg_bytes)).convert("RGBA")
-            background = background.resize(result_image.size, Image.Resampling.LANCZOS)
-            background.paste(result_image, mask=result_image.split()[3])
-            result_image = background.convert("RGB")
-            
-        elif background_type in self._backgrounds:
-            bg_color = self._hex_to_rgb(self._backgrounds[background_type])
-            background = Image.new("RGBA", result_image.size, bg_color + (255,))
-            background.paste(result_image, mask=result_image.split()[3])
-            result_image = background.convert("RGB")
-        
-        # Save result
         output = io.BytesIO()
-        if background_type == "transparent":
-            result_image.save(output, format="PNG", optimize=True)
-            ext = "png"
-        else:
-            result_image.convert("RGB").save(output, format="JPEG", quality=92)
-            ext = "jpg"
-        
+        image.save(output, format="JPEG", quality=92)
         output.seek(0)
         
-        # Upload to storage
-        filename = f"{uuid.uuid4()}.{ext}"
+        filename = f"{uuid.uuid4()}.jpg"
         processed_url = await self._upload_image(output.getvalue(), filename)
         
         processing_time = time.time() - start
@@ -138,8 +81,9 @@ class BiRefNetService:
             "id": str(uuid.uuid4()),
             "url": processed_url,
             "processing_time": round(processing_time, 2),
-            "model": "rembg-u2net",
+            "model": "fallback-pil",
             "status": "completed",
+            "warning": "Background removal requires AUTOBG_API_KEY",
         }
 
     async def enhance_image(
@@ -147,7 +91,7 @@ class BiRefNetService:
         image_url: str,
         options: Optional[Dict[str, bool]] = None,
     ) -> Dict[str, Any]:
-        """Enhance image using PIL (free)."""
+        """Enhance image using PIL."""
         import time
         start = time.time()
         
@@ -156,7 +100,6 @@ class BiRefNetService:
         image_bytes = await self._download_image(image_url)
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
         
-        # Apply enhancements
         if options.get("auto_color", True):
             enhancer = ImageEnhance.Color(image)
             image = enhancer.enhance(1.15)
@@ -196,24 +139,8 @@ class BiRefNetService:
         image_url: str,
         showroom_type: str = "indoor",
     ) -> Dict[str, Any]:
-        """Place vehicle on showroom background."""
-        showroom_backgrounds = {
-            "indoor": "#1a1a2e",
-            "outdoor": "#87CEEB",
-            "studio": "#2d3748",
-            "dark": "#0f0f0f",
-            "white": "#f8f9fa",
-            "gradient_dark": "#1a1a2e",
-            "garage": "#3d3d3d",
-        }
-        
-        bg_color = showroom_backgrounds.get(showroom_type, "#2d3748")
-        
-        return await self.remove_background(
-            image_url=image_url,
-            background_type="solid",
-            background_color=bg_color,
-        )
+        """Fallback: just enhance the image."""
+        return await self.enhance_image(image_url)
 
     async def batch_process(
         self,
@@ -228,18 +155,8 @@ class BiRefNetService:
         for url in image_urls:
             try:
                 result = {"image_url": url, "status": "completed"}
-                
-                for op in operations:
-                    if op == "enhance":
-                        processed = await self.enhance_image(url)
-                        result["processed_url"] = processed["url"]
-                    elif op == "remove_background":
-                        processed = await self.remove_background(url)
-                        result["processed_url"] = processed["url"]
-                    elif op == "showroom":
-                        processed = await self.virtual_showroom(url)
-                        result["processed_url"] = processed["url"]
-                
+                processed = await self.enhance_image(url)
+                result["processed_url"] = processed["url"]
                 results.append(result)
             except Exception as e:
                 results.append({
@@ -255,7 +172,6 @@ class BiRefNetService:
         }
 
 
-# Singleton instance
 _service_instance = None
 
 def get_birefnet_service() -> BiRefNetService:

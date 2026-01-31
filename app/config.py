@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     STORAGE_PATH: str = "/app/storage"
     STORAGE_URL: str = "/storage"  # Served by FastAPI static files mount
     
+    # AutoBG.ai API (specialized for automotive)
+    AUTOBG_API_KEY: str = ""
+    AUTOBG_API_URL: str = "https://api.autobg.ai/v1"
+    
     # Cloudflare R2 (optional - for production)
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY: str = ""

@@ -8,7 +8,7 @@ pydantic-settings==2.1.0
 python-jose[cryptography]==3.3.0
 redis==5.0.1
 numpy>=1.24.0
-# Mode éco: rembg uniquement (pas de torch/transformers)
-# Excellent pour les voitures, léger (~500MB vs 5GB)
-rembg==2.0.50
-onnxruntime==1.16.3
+# AutoBG.ai = cloud API, pas besoin de ML libs locales
+# rembg en fallback si pas d'API key (optionnel)
+# rembg==2.0.50
+# onnxruntime==1.16.3

@@ -8,10 +8,22 @@ from app.schemas import (
     BackgroundRemovalRequest,
     EnhancementRequest,
 )
-from app.services.birefnet_service import BiRefNetService, get_birefnet_service
+from app.config import settings
 from app.deps import get_current_user
 
 router = APIRouter()
+
+
+def get_image_service():
+    """Get the appropriate image service based on configuration."""
+    if settings.AUTOBG_API_KEY:
+        # Use AutoBG.ai cloud API
+        from app.services.autobg_service import get_autobg_service
+        return get_autobg_service()
+    else:
+        # Fallback to local rembg
+        from app.services.birefnet_service import get_birefnet_service
+        return get_birefnet_service()
 
 
 @router.post("/enhance", response_model=ProcessResponse)
@@ -19,10 +31,10 @@ async def enhance_image(
     request: EnhancementRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    image_service: BiRefNetService = Depends(get_birefnet_service),
+    image_service = Depends(get_image_service),
 ):
     """
-    Enhance image quality using PIL (free, self-hosted).
+    Enhance image quality.
 
     Features:
     - Auto color correction
@@ -59,10 +71,12 @@ async def enhance_image(
 async def remove_background(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    image_service: BiRefNetService = Depends(get_birefnet_service),
+    image_service = Depends(get_image_service),
 ):
     """
-    Remove image background using BiRefNet (state-of-the-art, free).
+    Remove image background.
+    
+    Uses AutoBG.ai (if configured) or local rembg.
 
     Options:
     - Transparent background
@@ -97,7 +111,7 @@ async def batch_process(
     request: ProcessRequest,
     background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user),
-    image_service: BiRefNetService = Depends(get_birefnet_service),
+    image_service = Depends(get_image_service),
 ):
     """
     Process multiple images in batch.
@@ -148,7 +162,7 @@ async def get_process_status(
 async def virtual_showroom(
     request: BackgroundRemovalRequest,
     current_user: dict = Depends(get_current_user),
-    image_service: BiRefNetService = Depends(get_birefnet_service),
+    image_service = Depends(get_image_service),
 ):
     """
     Place vehicle in a virtual showroom environment.
@@ -177,3 +191,19 @@ async def virtual_showroom(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Virtual showroom failed: {str(e)}",
         )
+
+
+@router.get("/info")
+async def service_info():
+    """Get information about the image processing service."""
+    backend = "autobg-ai" if settings.AUTOBG_API_KEY else "rembg-local"
+    return {
+        "service": "keroxio-image",
+        "backend": backend,
+        "features": [
+            "background_removal",
+            "virtual_showroom",
+            "image_enhancement",
+            "batch_processing",
+        ],
+    }
