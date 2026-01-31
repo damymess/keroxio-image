@@ -48,6 +48,13 @@ ENV PATH=/home/appuser/.local/bin:$PATH
 # Copy application code
 COPY --chown=appuser:appgroup app/ ./app/
 
+# Pre-download rembg model during build (avoids timeout at runtime)
+RUN python -c "from rembg import new_session; new_session('u2net')" || true
+
+# Create storage directory with correct permissions
+RUN mkdir -p /app/storage/processed /app/storage/uploads \
+    && chown -R appuser:appgroup /app/storage
+
 # Switch to non-root user
 USER appuser
 
@@ -56,8 +63,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONFAULTHANDLER=1
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+# Health check (start-period long pour téléchargement modèle U2-Net ~200MB)
+HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=5 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Expose port
